@@ -3,8 +3,6 @@
 !pip install deap
 
 
-# COMMAND ----------
-
 # Imports
 import pandas as pd  
 import pyspark
@@ -28,6 +26,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_score, recall_score
 
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.pipeline import Pipeline
@@ -39,8 +38,6 @@ import random
 from deap import base, creator, tools, algorithms  
 import functools  
   
-
-# COMMAND ----------
 
 # Standard Variables
 TABLE_LOCATION = 'hackathon.were_just_here_for_the_snacks.synthetic_features_data_small_lowfraud'
@@ -73,8 +70,6 @@ EXISTING_RULE_SET = [
     "(transactionChannel == 'CNP') and (TX_AMOUNT > 500) and (CUSTOMER_ID_NB_TX_7DAY_WINDOW > 5)"
 ]
 
-
-# COMMAND ----------
 
 def read_data(dataset_name):
     feature_df = spark.read.table(dataset_name)
@@ -681,9 +676,6 @@ def evaluate(individual, rule_statistics, config):
     return (fitness,)  
 
 
-
-# COMMAND ----------
-
 # Pipeline
 
 def anomaly_detection_pipeline():
@@ -825,7 +817,7 @@ def genetic_optimization_pipeline(ruleset_df):
 
     config = {  
         "num_rules": len(ruleset_df),  # Total number of rules to consider  
-        "rule_penalty": 10000,   # Penalty factor for including more rules  
+        "rule_penalty": 0.1,   # Penalty factor for including more rules  
         "weights": {"fraud_volume": 0.5, "fraud_value": 0.5},  # Weights for fitness calculation  
         "cxpb": 0.7,  # Probability for crossover operation  
         "mutpb": 0.2,  # Probability for mutation operation  
@@ -834,6 +826,13 @@ def genetic_optimization_pipeline(ruleset_df):
     }
 
     ruleset_df = ruleset_df.reset_index(drop=True)  
+    
+    # Assuming selected_rules_stats is the DataFrame with 'frd_vol' and 'frd_val' columns
+    scaler = StandardScaler()
+
+    # Standardize the 'frd_vol' and 'frd_val' columns
+    ruleset_df[['frd_vol', 'frd_val']] = scaler.fit_transform(ruleset_df[['frd_vol', 'frd_val']])
+
      # Check if classes are already created  
     if "FitnessMax" not in creator.__dict__:  
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))  
@@ -882,8 +881,6 @@ def genetic_optimization_pipeline(ruleset_df):
   
     return selected_rules_df  
 
-
-# COMMAND ----------
 
 if __name__=='__main__':
     anomalies_tagged = anomaly_detection_pipeline()
@@ -892,144 +889,4 @@ if __name__=='__main__':
     selected_rules_stats = genetic_optimization_pipeline(combined_ruleset)
 
     display(selected_rules_stats)
-
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Genetic Algo for Rule Optimization
-
-# COMMAND ----------
-
-!pip install deap
-
-# COMMAND ----------
-
-
-# df = combined_ruleset  
-  
-  
-def evaluate(individual, rule_statistics, config):  
-    """  
-    Evaluate the fitness of an individual (ruleset).  
-      
-    Args:  
-        individual (list): A list of binary values representing the inclusion of rules.  
-        rule_statistics: A pandas DataFrame containing rule statistics.  
-          
-    Returns:  
-        tuple: A single-element tuple containing the fitness score.  
-    """  
-    # Calculate fraud volume and fraud value based on selected rules  
-    fraud_volume = sum(rule_statistics.loc[i, "frd_vol"] for i, included in enumerate(individual) if included)  
-    fraud_value = sum(rule_statistics.loc[i, "frd_val"] for i, included in enumerate(individual) if included)  
-  
-    # Calculate the fitness score  
-    fitness = (config["weights"]["fraud_volume"] * fraud_volume +  
-               config["weights"]["fraud_value"] * fraud_value)  
-  
-    # Apply a penalty based on the number of rules selected  
-    num_selected_rules = sum(individual)  
-    penalty = config["rule_penalty"] * num_selected_rules  
-    fitness -= penalty  
-  
-    return (fitness,)  
-  
-def genetic_optimization_pipeline(ruleset_df):  
-    """  
-    Main function to set up and execute the genetic algorithm.  
-    """  
-
-    config = {  
-        "num_rules": len(ruleset_df),  # Total number of rules to consider  
-        "rule_penalty": 10000,   # Penalty factor for including more rules  
-        "weights": {"fraud_volume": 0.5, "fraud_value": 0.5},  # Weights for fitness calculation  
-        "cxpb": 0.7,  # Probability for crossover operation  
-        "mutpb": 0.2,  # Probability for mutation operation  
-        "ngen": 50,    # Number of generations to run the algorithm  
-        "pop_size": 20 # Size of the population  
-    }
-
-    ruleset_df = ruleset_df.reset_index(drop=True)  
-     # Check if classes are already created  
-    if "FitnessMax" not in creator.__dict__:  
-        creator.create("FitnessMax", base.Fitness, weights=(1.0,))  
-    if "Individual" not in creator.__dict__:  
-        creator.create("Individual", list, fitness=creator.FitnessMax)  
-  
-    toolbox = base.Toolbox()  
-    toolbox.register("attr_bool", random.randint, 0, 1)  
-    toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n=config["num_rules"])  
-    toolbox.register("population", tools.initRepeat, list, toolbox.individual)  
-  
-    # Register the evaluation, crossover, mutation, and selection functions  
-    toolbox.register("evaluate", functools.partial(evaluate, rule_statistics=ruleset_df, config=config))  
-    toolbox.register("mate", tools.cxOnePoint)  
-    toolbox.register("mutate", tools.mutFlipBit, indpb=0.05)  
-    toolbox.register("select", tools.selRoulette)  
-  
-    random.seed(42)  
-  
-    # Create initial population  
-    pop = toolbox.population(n=config["pop_size"])  
-  
-    # Define the hall of fame (elitism) to store the best individual  
-    hof = tools.HallOfFame(1)  
-  
-    # Define statistics to track during the GA run  
-    stats = tools.Statistics(lambda ind: ind.fitness.values[0])  # Extract the first element of the tuple  
-    stats.register("avg", lambda x: sum(x) / len(x))  # Track average fitness  
-    stats.register("min", min)  # Track minimum fitness  
-    stats.register("max", max)  # Track maximum fitness  
-  
-    # Run the genetic algorithm  
-    algorithms.eaSimple(pop, toolbox, cxpb=config["cxpb"], mutpb=config["mutpb"], ngen=config["ngen"],  
-                        stats=stats, halloffame=hof, verbose=True)  
-  
-    # Print the best solution found  
-    best_individual = hof[0]  
-    print(f"Best individual is {best_individual} with fitness {best_individual.fitness.values[0]}")  
-  
-    # Filter the DataFrame to keep only the rules in the best solution  
-    selected_rules_indices = [i for i, included in enumerate(best_individual) if included]  
-    selected_rules_df = ruleset_df.iloc[selected_rules_indices]  
-  
-    print("Filtered DataFrame with selected rules:")  
-    print(selected_rules_df)  
-  
-    return selected_rules_df  
-
-
-# COMMAND ----------
-
-selected_rules_stats = genetic_optimization_pipeline(combined_ruleset)  
-
-# COMMAND ----------
-
-display(selected_rules_stats)
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Rough Work to test the pipeline - DELETE LATER
-
-# COMMAND ----------
-
-X = dfp.drop(columns=['TX_FRAUD','TRANSACTION_ID','TX_DATETIME','dw_bus_dt','CUSTOMER_ID','TX_FRAUD_SCENARIO'])
-
-y = dfp['TX_FRAUD']
-
-# COMMAND ----------
-
-display(feature_may_last3wk_btl.head())
-
-# COMMAND ----------
 
