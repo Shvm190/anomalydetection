@@ -1,0 +1,5 @@
+from pages.home import show_home
+from pages.anomalies import show_anomalies
+from pages.rule_suggestions import show_rule_suggestions
+from pages.rule_monitoring import show_rule_monitoring
+from pages.rule_optimisation import show_rule_optimisation

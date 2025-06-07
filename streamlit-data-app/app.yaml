@@ -1,0 +1,15 @@
+command: [
+  "streamlit", 
+  "run",
+  "app.py"
+]
+
+env:
+  - name: "DATABRICKS_HOST"
+    value: "<add>"
+  - name: "DATABRICKS_WAREHOUSE_ID"
+    value: "<add>"
+  - name: "DATABRICKS_ACCESS_TOKEN"
+    value: "<add>"
+  - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
+    value: "false"
