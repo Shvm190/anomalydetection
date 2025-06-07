@@ -1,4 +1,40 @@
 # Databricks notebook source
+"""
+This notebook implements an end-to-end anomaly detection pipeline for financial transactions.
+It leverages a multi-stage approach, combining traditional machine learning models
+(Logistic Regression, Isolation Forest) with a deep learning autoencoder to identify
+and extract rules for fraudulent activities. The pipeline also includes a genetic
+algorithm for optimizing the extracted rules.
+
+The main components and their functionalities are:
+1.  **Data Loading and Preprocessing**: Reads synthetic transaction data from a Databricks table
+    and prepares it for various models, including time-based splitting and customer-ID-aware
+    train/test splitting.
+2.  **Logistic Regression (Feeder Model)**: Trains a logistic regression model to identify
+    'Above The Line' (ATL) transactions, serving as a first-pass filter.
+3.  **Autoencoder for Dimensionality Reduction**: A PyTorch-based autoencoder is trained on
+    the non-fraudulent (or less suspicious) transactions to learn normal patterns and
+    generate embeddings. These embeddings capture compressed representations of the transactions.
+4.  **Isolation Forest for Anomaly Detection**: Applies Isolation Forest on the autoencoder
+    embeddings of 'Below The Line' (BTL) transactions (transactions flagged as suspicious by
+    the logistic regression) to identify anomalies.
+5.  **Decision Tree for Rule Extraction**: A Decision Tree is trained on the identified anomalies
+    (from the Isolation Forest) to extract human-readable rules that characterize anomalous behavior.
+6.  **Rule Evaluation and Optimization (Genetic Algorithm)**: Evaluates the performance of both
+    newly suggested rules and existing rules, and then uses a genetic algorithm (DEAP) to
+    optimize a ruleset by maximizing fraud capture while minimizing the number of rules.
+7.  **Artifact Saving**: Saves trained models (Logistic Regression, Isolation Forest, Autoencoder
+    weights and scaler) and processed dataframes as artifacts.
+
+**Authors:**
+-   Shivam Singh (Pipeline)
+-   L Joy (Streamlit Dashboard)
+
+**Date:** June 7, 2025
+
+**Environment:** Databricks with PySpark, Pandas, scikit-learn, PyTorch, and DEAP.
+"""
+
 !pip install torch
 !pip install deap
 
